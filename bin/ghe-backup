@@ -7,6 +7,40 @@
 #/ transferred.
 set -e
 
+# Skip certain steps in the backup process. Helpful if you are handling them with
+# some other mechanism or simply do not need them backed up.
+BACKUP_SETTINGS=true
+BACKUP_SSH_AUTHORIZED_KEYS=true
+BACKUP_SSH_HOST_KEYS=true
+BACKUP_MYSQL=true
+BACKUP_REDIS=true
+BACKUP_REPOSITORIES=true
+BACKUP_GITHUB_PAGES=true
+BACKUP_USER_DATA=true
+BACKUP_ELASTIC_SEARCH=true
+while getopts "skhmrgpue" opt; do
+  case "$opt" in
+    s) BACKUP_SETTINGS=false
+      ;;
+    k) BACKUP_SSH_AUTHORIZED_KEYS=false
+      ;;
+    h) BACKUP_SSH_HOST_KEYS=false
+      ;;
+    m) BACKUP_MYSQL=false
+      ;;
+    r) BACKUP_REDIS=false
+      ;;
+    g) BACKUP_REPOSITORIES=false
+      ;;
+    u) BACKUP_USER_DATA=false
+      ;;
+    p) BACKUP_PAGES=false
+      ;;
+    e) BACKUP_ELASTIC_SEARCH=false
+      ;;
+  esac
+done
+
 # Bring in the backup configuration
 cd $(dirname "$0")/..
 . share/github-backup-utils/ghe-backup-config
@@ -87,48 +121,66 @@ if [ "$GHE_BACKUP_STRATEGY" = "tarball" ]; then
     GHE_MAINTENANCE_MODE_ENABLED=true
 fi
 
-echo "Backing up GitHub settings ..."
-ghe-backup-settings ||
-failures="$failures settings"
-
-echo "Backing up SSH authorized keys ..."
-ghe-ssh "$GHE_HOSTNAME" -- 'ghe-export-authorized-keys' > authorized-keys.json ||
-failures="$failures authorized-keys"
-
-echo "Backing up SSH host keys ..."
-ghe-ssh "$GHE_HOSTNAME" -- 'ghe-export-ssh-host-keys' > ssh-host-keys.tar ||
-failures="$failures ssh-host-keys"
-
-echo "Backing up MySQL database ..."
-echo 'ghe-export-mysql | gzip' |
-ghe-ssh "$GHE_HOSTNAME" -- /bin/sh > mysql.sql.gz ||
-failures="$failures mysql"
-
-echo "Backing up Redis database ..."
-ghe-backup-redis > redis.rdb ||
-failures="$failures redis"
-
-echo "Backing up Git repositories ..."
-ghe-backup-repositories-${GHE_BACKUP_STRATEGY} ||
-failures="$failures repositories"
-
-echo "Backing up GitHub Pages ..."
-ghe-backup-pages-${GHE_BACKUP_STRATEGY} ||
-failures="$failures pages"
-
-if [ "$GHE_VERSION_MAJOR" -ge 2 ]; then
-    echo "Backing up asset attachments ..."
-    ghe-backup-userdata alambic_assets ||
-    failures="$failures alambic_assets"
-
-    echo "Backing up hook deliveries ..."
-    ghe-backup-userdata hookshot ||
-    failures="$failures hookshot"
+if $BACKUP_SETTINGS; then
+    echo "Backing up GitHub settings ..."
+    ghe-backup-settings ||
+    failures="$failures settings"
 fi
 
-echo "Backing up Elasticsearch indices ..."
-ghe-backup-es-${GHE_BACKUP_STRATEGY} ||
-failures="$failures elasticsearch"
+if $BACKUP_SSH_AUTHORIZED_KEYS; then
+    echo "Backing up SSH authorized keys ..."
+    ghe-ssh "$GHE_HOSTNAME" -- 'ghe-export-authorized-keys' > authorized-keys.json ||
+    failures="$failures authorized-keys"
+fi
+
+if $BACKUP_SSH_AUTHORIZED_KEYS; then
+    echo "Backing up SSH host keys ..."
+    ghe-ssh "$GHE_HOSTNAME" -- 'ghe-export-ssh-host-keys' > ssh-host-keys.tar ||
+    failures="$failures ssh-host-keys"
+fi
+
+if $BACKUP_MYSQL; then
+    echo "Backing up MySQL database ..."
+    echo 'ghe-export-mysql | gzip' |
+    ghe-ssh "$GHE_HOSTNAME" -- /bin/sh > mysql.sql.gz ||
+    failures="$failures mysql"
+fi
+
+if $BACKUP_REDIS; then
+    echo "Backing up Redis database ..."
+    ghe-backup-redis > redis.rdb ||
+    failures="$failures redis"
+fi
+
+if $BACKUP_REPOSITORIES; then
+    echo "Backing up Git repositories ..."
+    ghe-backup-repositories-${GHE_BACKUP_STRATEGY} ||
+    failures="$failures repositories"
+fi
+
+if $BACKUP_GITHUB_PAGES; then
+  echo "Backing up GitHub Pages ..."
+  ghe-backup-pages-${GHE_BACKUP_STRATEGY} ||
+  failures="$failures pages"
+fi
+
+if $BACKUP_USER_DATA; then
+    if [ "$GHE_VERSION_MAJOR" -ge 2 ]; then
+        echo "Backing up asset attachments ..."
+        ghe-backup-userdata alambic_assets ||
+        failures="$failures alambic_assets"
+
+        echo "Backing up hook deliveries ..."
+        ghe-backup-userdata hookshot ||
+        failures="$failures hookshot"
+    fi
+fi
+
+if $BACKUP_ELASTIC_SEARCH; then
+    echo "Backing up Elasticsearch indices ..."
+    ghe-backup-es-${GHE_BACKUP_STRATEGY} ||
+    failures="$failures elasticsearch"
+fi
 
 # If we're using the tarball backup strategy, bring the appliance out of
 # maintenance mode now instead of waiting until after pruning stale snapshots.
