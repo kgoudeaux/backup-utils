@@ -80,7 +80,7 @@ while getopts "fsckhmrgpue" opt; do
 done
 
 # Grab the host arg
-GHE_HOSTNAME="${1:-$GHE_RESTORE_HOST}"
+GHE_HOSTNAME="$GHE_RESTORE_HOST"
 
 # Hostname without any port suffix
 hostname=$(echo "$GHE_HOSTNAME" | cut -f 1 -d :)
