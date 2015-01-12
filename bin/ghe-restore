@@ -15,6 +15,22 @@
 #/                     snapshots may be listed under the data directory.
 #/   -v                Enable verbose output.
 #/
+#/   -k                Skip ssh keys
+#/
+#/   -h                Skip ssh host keys
+#/
+#/   -m                Skip mysql
+#/
+#/   -r                Skip redis
+#/
+#/   -g                Skip repositories
+#/
+#/   -u                Skip user data
+#/
+#/   -p                Skip pages
+#/
+#/   -e                Skip elastic search data
+#/
 #/ Note that the host must be reachable and your SSH key must be setup as
 #/ described in the following help article:
 #/
@@ -28,6 +44,42 @@ cd $(dirname "$0")/..
 # Parse arguments
 restore_settings=false
 force=false
+restore_ssh_authorized_keys=true
+restore_ssh_host_keys=true
+restore_mysql=true
+restore_redis=true
+restore_repositories=true
+restore_github_pages=true
+restore_user_data=true
+restore_elastic_search=true
+while getopts "skhmrgpue" opt; do
+  case "$opt" in
+    f|force) force=true
+      ;;
+    s) snapshot_id="$(basename "$2")"
+      ;;
+    c) restore_settings=true
+      ;;
+    k) restore_ssh_authorized_keys=false
+      ;;
+    h) restore_ssh_host_keys=false
+      ;;
+    m) restore_mysql=false
+      ;;
+    r) restore_redis=false
+      ;;
+    g) restore_repositories=false
+      ;;
+    u) restore_user_data=false
+      ;;
+    p) restore_pages=false
+      ;;
+    e) restore_elastic_search=false
+      ;;
+  esac
+done
+
+
 while true; do
     case "$1" in
         -f|--force)
@@ -169,31 +221,45 @@ if [ "$GHE_VERSION_MAJOR" -ge 2 ]; then
     ghe-ssh "$GHE_HOSTNAME" -- /bin/sh 1>&3
 fi
 
-echo "Restoring Git repositories ..."
-ghe-restore-repositories-${GHE_BACKUP_STRATEGY} "$GHE_HOSTNAME" 1>&3
-
-echo "Restoring GitHub Pages ..."
-ghe-restore-pages-${GHE_BACKUP_STRATEGY} "$GHE_HOSTNAME" 1>&3
-
-if [ "$GHE_VERSION_MAJOR" -ge 2 ]; then
-    echo "Restoring asset attachments ..."
-    ghe-restore-userdata alambic_assets "$GHE_HOSTNAME" 1>&3
-
-    echo "Restoring hook deliveries ..."
-    ghe-restore-userdata hookshot "$GHE_HOSTNAME" 1>&3
+if $restore_repositories; then
+    echo "Restoring Git repositories ..."
+    ghe-restore-repositories-${GHE_BACKUP_STRATEGY} "$GHE_HOSTNAME" 1>&3
 fi
 
-echo "Restoring MySQL database ..."
-gzip -dc "$GHE_RESTORE_SNAPSHOT_PATH/mysql.sql.gz" | ghe-ssh "$GHE_HOSTNAME" -- 'ghe-import-mysql' 1>&3
+if $restore_pages; then
+    echo "Restoring GitHub Pages ..."
+    ghe-restore-pages-${GHE_BACKUP_STRATEGY} "$GHE_HOSTNAME" 1>&3
+fi
 
-echo "Restoring Redis database ..."
-ghe-ssh "$GHE_HOSTNAME" -- 'ghe-import-redis' < "$GHE_RESTORE_SNAPSHOT_PATH/redis.rdb" 1>&3
+if $restore_user_data; then
+    if [ "$GHE_VERSION_MAJOR" -ge 2 ]; then
+        echo "Restoring asset attachments ..."
+        ghe-restore-userdata alambic_assets "$GHE_HOSTNAME" 1>&3
 
-echo "Restoring SSH authorized keys ..."
-ghe-ssh "$GHE_HOSTNAME" -- 'ghe-import-authorized-keys' < "$GHE_RESTORE_SNAPSHOT_PATH/authorized-keys.json" 1>&3
+        echo "Restoring hook deliveries ..."
+        ghe-restore-userdata hookshot "$GHE_HOSTNAME" 1>&3
+    fi
+fi
 
-echo "Restoring Elasticsearch indices ..."
-ghe-restore-es-${GHE_BACKUP_STRATEGY} "$GHE_HOSTNAME" 1>&3
+if $restore_mysql; then
+    echo "Restoring MySQL database ..."
+    gzip -dc "$GHE_RESTORE_SNAPSHOT_PATH/mysql.sql.gz" | ghe-ssh "$GHE_HOSTNAME" -- 'ghe-import-mysql' 1>&3
+fi
+
+if $restore_redis; then
+    echo "Restoring Redis database ..."
+    ghe-ssh "$GHE_HOSTNAME" -- 'ghe-import-redis' < "$GHE_RESTORE_SNAPSHOT_PATH/redis.rdb" 1>&3
+fi
+
+if $restore_ssh_authorized_keys; then
+    echo "Restoring SSH authorized keys ..."
+    ghe-ssh "$GHE_HOSTNAME" -- 'ghe-import-authorized-keys' < "$GHE_RESTORE_SNAPSHOT_PATH/authorized-keys.json" 1>&3
+fi
+
+if $restore_elastic_search; then
+    echo "Restoring Elasticsearch indices ..."
+    ghe-restore-es-${GHE_BACKUP_STRATEGY} "$GHE_HOSTNAME" 1>&3
+fi
 
 # When restoring to a 2.x host that has already been configured, kick off a
 # config run to perform data migrations.
@@ -208,8 +274,10 @@ fi
 trap "" EXIT
 update_restore_status "complete"
 
-echo "Restoring SSH host keys ..."
-ghe-ssh "$GHE_HOSTNAME" -- 'ghe-import-ssh-host-keys' < "$GHE_RESTORE_SNAPSHOT_PATH/ssh-host-keys.tar" 1>&3
+if $restore_ssh_host_keys; then
+    echo "Restoring SSH host keys ..."
+    ghe-ssh "$GHE_HOSTNAME" -- 'ghe-import-ssh-host-keys' < "$GHE_RESTORE_SNAPSHOT_PATH/ssh-host-keys.tar" 1>&3
+fi
 
 echo "Completed restore of $GHE_HOSTNAME from snapshot $GHE_RESTORE_SNAPSHOT"
 echo "Visit https://$hostname/setup/settings to review appliance configuration."
