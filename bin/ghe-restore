@@ -79,31 +79,6 @@ while getopts "skhmrgpue" opt; do
   esac
 done
 
-
-while true; do
-    case "$1" in
-        -f|--force)
-            force=true
-            shift
-            ;;
-        -s)
-            snapshot_id="$(basename "$2")"
-            shift 2
-            ;;
-        -c)
-            restore_settings=true
-            shift
-            ;;
-        -*)
-            echo "Error: invalid argument: '$1'" 1>&2
-            exit 1
-            ;;
-        *)
-            break
-            ;;
-    esac
-done
-
 # Grab the host arg
 GHE_HOSTNAME="${1:-$GHE_RESTORE_HOST}"
 
