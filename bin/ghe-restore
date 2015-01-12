@@ -56,7 +56,7 @@ while getopts "fsckhmrgpue" opt; do
   case "$opt" in
     f|force) force=true
       ;;
-    s) snapshot_id="$(basename "$2")"
+    s) snapshot_id="$(basename "$OPTARG")"
       ;;
     c) restore_settings=true
       ;;
