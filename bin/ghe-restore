@@ -52,7 +52,7 @@ restore_repositories=true
 restore_github_pages=true
 restore_user_data=true
 restore_elastic_search=true
-while getopts "skhmrgpue" opt; do
+while getopts "fsckhmrgpue" opt; do
   case "$opt" in
     f|force) force=true
       ;;
